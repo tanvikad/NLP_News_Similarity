@@ -12,6 +12,8 @@ import spacy
 import en_core_web_sm
 nlp = en_core_web_sm.load()
 
+import matplotlib.pyplot as plt
+
 
 def test():
     print("Pipeline:", nlp.pipe_names)
@@ -95,10 +97,10 @@ def classify(text1, text2, threshold = 0.31):
     """Takes in two texts and a threshold for matching nouns/propn.
     Returns the frequency of matching nouns between the two texts,
     as well as true if the frequency is above the threshold"""
-    #pos_1 = set(get_pos(text1, ["NOUN", "PROPN"]))
-    #pos_2 = set(get_pos(text2, ["NOUN", "PROPN"]))
-    pos_1 = set(get_pos(text1, None))
-    pos_2 = set(get_pos(text2, None))
+    pos_1 = set(get_pos(text1, ["NOUN", "PROPN"]))
+    pos_2 = set(get_pos(text2, ["NOUN", "PROPN"]))
+    #pos_1 = set(get_pos(text1, None))
+    #pos_2 = set(get_pos(text2, None))
     count = 0
     for token in pos_1:
         if(token in pos_2):
@@ -151,9 +153,49 @@ def experiment(pairs_of_keys):
     print("We did this well: ", num_correct/num_total)
         
 
+
+
+def get_best_classifier(pairs_of_keys, num_total = 100, granularity = 50, min = 0.0, max = 0.12):
+    test_pairs = pairs_of_keys[:num_total]
+    test_pairs = expand_pairs(test_pairs, 0.5)
+    num_total = len(test_pairs)
+
+    x = []
+    num_correct = []
+    
+    step_size = (max-min)/granularity
+    for i in range(granularity):
+        x += [min+(i*step_size)]
+        num_correct += [0]
+    
+    print(x)
+
+    for pair in test_pairs:
+        input1, input2, groundtruth = pair
+        text1 = get_text(input1)
+        text2 = get_text(input2)
+        if(text1 == None or text2 == None): continue
+        count, frequency, classfication = classify(text1, text2)
+        for i in range(granularity):
+            trial_truth = frequency > x[i]
+            if(trial_truth == groundtruth):
+                num_correct[i] += 1   
+
+
+    #making num_correct into percentage
+    print(num_correct)
+    for i in range(granularity):
+        num_correct[i] = num_correct[i]/num_total
+    
+    plt.plot(x,num_correct, marker=".")
+    plt.title("Binary Classifier versus Accuracy")
+    plt.xlabel("Binary Classification")
+    plt.ylabel("Accuracy")
+    plt.savefig("Binary_Classifier.jpg")
+        
 def main(args):
     pairs_of_keys = return_pairs_of_keys(args.file)
-    experiment(pairs_of_keys)
+    get_best_classifier(pairs_of_keys)
 
 
 if __name__ == "__main__": 
