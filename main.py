@@ -99,8 +99,8 @@ def classify(text1, text2, threshold = 0.31):
     as well as true if the frequency is above the threshold"""
     pos_1 = set(get_pos(text1, ["NOUN", "PROPN"]))
     pos_2 = set(get_pos(text2, ["NOUN", "PROPN"]))
-    #pos_1 = set(get_pos(text1, None))
-    #pos_2 = set(get_pos(text2, None))
+    #pos_1 = set(get_pos(text1, ["PROPN"]))
+    #pos_2 = set(get_pos(text2, ["PROPN"]))
     count = 0
     for token in pos_1:
         if(token in pos_2):
@@ -155,7 +155,7 @@ def experiment(pairs_of_keys):
 
 
 
-def get_best_classifier(pairs_of_keys, num_total = 100, granularity = 50, min = 0.0, max = 0.12):
+def get_best_classifier(pairs_of_keys, num_total = 100, granularity = 50, min = 0.0, max = 0.5):
     test_pairs = pairs_of_keys[:num_total]
     test_pairs = expand_pairs(test_pairs, 0.5)
     num_total = len(test_pairs)
@@ -188,7 +188,7 @@ def get_best_classifier(pairs_of_keys, num_total = 100, granularity = 50, min = 
         num_correct[i] = num_correct[i]/num_total
     
     plt.plot(x,num_correct, marker=".")
-    plt.title("Binary Classifier versus Accuracy")
+    plt.title("Binary Classifier versus Accuracy with all Nouns")
     plt.xlabel("Binary Classification")
     plt.ylabel("Accuracy")
     plt.savefig("Binary_Classifier.jpg")
