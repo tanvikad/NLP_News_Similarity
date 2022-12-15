@@ -34,18 +34,21 @@ def return_pairs_of_keys(file):
     with open(file) as f:
         lines = f.readlines()
         for line in lines:
+            values = str(line).split(",")
+            if(float(values[-3]) > 2): continue
             keys = str(line).split(",")[2]
             keys = keys.split("_")
             if keys[0] == "pair":
                 continue
-            pairs +=[(int(keys[0]), int(keys[1]))]
+            pairs +=[(int(keys[0]), int(keys[1], ))]
     return pairs
              
 def expand_pairs(pairs, false_rate):
     """Takes in existing (true) pairs and desired rate of false pairs.
     Generates and labels false pairs and combines randomly with the true pairs."""
     total_num = len(pairs)/(1-false_rate)
-    options = 2*len(pairs) - 1
+    #options = 2*len(pairs) - 1
+    options = len(pairs) - 1
     return_pairs = []
     for pair in pairs:
         return_pairs += [(pair[0], pair[1], True)]
@@ -55,8 +58,11 @@ def expand_pairs(pairs, false_rate):
         if first == second:
             continue
     
-        first_elem = pairs[first // 2][first % 2]
-        second_elem = pairs[second // 2][second % 2]
+        # first_elem = pairs[first // 2][first % 2]
+        # second_elem = pairs[second // 2][second % 2]
+
+        first_elem = pairs[first][0]
+        second_elem = pairs[second][1]
         if (first_elem, second_elem) in pairs or (second_elem, first_elem) in pairs:
             continue
         if (first_elem, second_elem, False) in return_pairs or (second_elem, first_elem, False) in return_pairs:
@@ -101,10 +107,12 @@ def classify(text1, text2, threshold = 0.31):
     """Takes in two texts and a threshold for matching nouns/propn.
     Returns the frequency of matching nouns between the two texts,
     as well as true if the frequency is above the threshold"""
+    pos_1 = set(get_pos(text1, ["PROPN"]))
+    pos_2 = set(get_pos(text2, ["PROPN"]))
     #pos_1 = set(get_pos(text1, ["NOUN", "PROPN"]))
     #pos_2 = set(get_pos(text2, ["NOUN", "PROPN"]))
-    pos_1 = set(get_pos(text1, None))
-    pos_2 = set(get_pos(text2, None))
+    #pos_1 = set(get_pos(text1, None))
+    #pos_2 = set(get_pos(text2, None))
     count = 0
     for token in pos_1:
         if(token in pos_2):
@@ -212,7 +220,7 @@ def experiment(pairs_of_keys, translate = False):
 
     
 
-def get_data(test_pairs, x, granularity=50, num_total=100, translate=True, use_F1=True):
+def get_data(test_pairs, x, granularity=50, num_total=100, translate=True, use_correlation=False):
     
     num_correct = []
     true_positive = []
@@ -263,9 +271,13 @@ def get_data(test_pairs, x, granularity=50, num_total=100, translate=True, use_F
     precisionarray = [0] * len(num_correct)
     recallarray = [0] * len(num_correct)
     f1array = [0] * len(num_correct)
+    correlationarray = [0] * len(num_correct)
     for i in range(granularity):
         num_correct[i] = num_correct[i]/num_total
-
+        if use_correlation:
+            correlationnumerator = ((true_positive[i] * true_negative[i]) - (false_positive[i]*false_negative[i]))
+            correlationdenominator = math.sqrt((true_positive[i]+false_positive[i])*(true_positive[i]+false_negative[i])*(true_negative[i]+false_positive[i])*(true_negative[i]+false_negative[i]))
+            correlationarray[i] = correlationnumerator/correlationdenominator
         #Since we had a problem where everything was predicted false, use if statement for precision
         if true_positive[i] == 0 and false_positive[i] == 0:
             print("predicted all false")
@@ -287,11 +299,23 @@ def get_data(test_pairs, x, granularity=50, num_total=100, translate=True, use_F
     bestf1precision = precisionarray[bestf1index]
     bestf1recall = recallarray[bestf1index]
 
-    print(len(f1array))
-    print(len(x))
-    return  f1array, bestf1precision, bestf1recall
+    print("The best precision is ", bestf1precision, "\n")
+    print("The best recall is ", bestf1recall, "\n")
+    if use_correlation:
+        return correlationarray, bestf1precision, bestf1recall
+    else:
+        return  f1array, bestf1precision, bestf1recall
 
 
+def get_path_of_image(title):
+    path_name = ""
+    for char in title:
+        if char == ' ':
+            path_name += '_'
+        else:
+            path_name += char
+    path_name += ".jpg"
+    return path_name
 
 def get_best_classifier(pairs_of_keys, num_total = 100, granularity = 50, min = 0.0, max = 0.5, plot_f1 = True):
     random.shuffle(pairs_of_keys)
@@ -305,17 +329,17 @@ def get_best_classifier(pairs_of_keys, num_total = 100, granularity = 50, min = 
         x += [min+(i*step_size)]
 
     print(x)
-    translated_data, bestf1precisiontranslated, bestf1recalltranslated= get_data(test_pairs,x, granularity=granularity, num_total=num_total, translate=True)
-    not_translated_data, bestf1precisionnottranslated, bestf1recallnottranslated= get_data(test_pairs,x, granularity=granularity, num_total=num_total, translate=False)
-    
+    translated_data, bestf1precisiontranslated, bestf1recalltranslated = get_data(test_pairs,x, granularity=granularity, num_total=num_total, translate=True)
+    not_translated_data, bestf1precisionnottranslated, bestf1recallnottranslated = get_data(test_pairs,x, granularity=granularity, num_total=num_total, translate=False)
     
     plt.plot(x,translated_data, marker=".", label="Translated Data", color="Blue")
     plt.plot(x,not_translated_data, marker=".", label="Not Translated Data", color="Red")
     plt.legend()
-    plt.title("Binary Classifier vs. F1 with all words")
+    title = "Binary Classifier vs. F1 with Proper Nouns on (De-En)"
+    plt.title(title)
     plt.xlabel("Binary Classification")
     plt.ylabel("F1")
-    plt.savefig("Binary_Classifier.jpg")
+    plt.savefig(get_path_of_image(title))
 
     if(plot_f1):
         plot_f_scores(bestf1precisiontranslated, bestf1recalltranslated, bestf1precisionnottranslated, bestf1recallnottranslated)
@@ -328,36 +352,33 @@ def plot_f_scores(precision, recall, precision_nottranslated, recall_nottranslat
     fig.clear(True) 
     f1 = (2*precision*recall)/(precision + recall)
     fs = [f1]
-    logBeta_translated = [0]
+    fn1 = (2*precision_nottranslated*recall_nottranslated)/(precision_nottranslated + recall_nottranslated)
+    fns = [fn1]
+    logBeta = [0]
     for i in range(1, 10):
         scale = 1.2**i
         invScale = 1.0/scale
         f = ((1 + scale**2)*precision*recall)/(precision*scale**2 + recall)
+        fn = ((1 + scale**2)*precision_nottranslated*recall_nottranslated)/(precision_nottranslated*scale**2 + recall_nottranslated)
         fs += [f]
-        logBeta_translated += [math.log(scale)]
+        fns += [fn]
+        logBeta += [math.log(scale)]
         f2 = ((1 + invScale**2)*precision*recall)/(precision*invScale**2 + recall)
+        fn2 = ((1 + invScale**2)*precision_nottranslated*recall_nottranslated)/(precision_nottranslated*invScale**2 + recall_nottranslated)
         fs = [f2] + fs
-        logBeta_translated = [math.log(invScale)] + logBeta_translated
-    
-    logBeta_not_translated = [0]
-    for i in range(1, 10):
-        scale = 1.2**i
-        invScale = 1.0/scale
-        f = ((1 + scale**2)*precision*recall)/(precision*scale**2 + recall)
-        fs += [f]
-        logBeta_not_translated += [math.log(scale)]
-        f2 = ((1 + invScale**2)*precision*recall)/(precision*invScale**2 + recall)
-        fs = [f2] + fs
-        logBeta_not_translated = [math.log(invScale)] + logBeta_not_translated
+        fns = [fn2] + fns
+        logBeta = [math.log(invScale)] + logBeta
+
         
     
-    plt.plot(logBeta_translated,fs, marker=".", label="Translated", color="Blue")
-    plt.plot(logBeta_not_translated,fs, marker=".", label="Not Translated", color="Red")
+    plt.plot(logBeta,fs, marker=".", label="Translated", color="Blue")
+    plt.plot(logBeta,fns, marker=".", label="Not Translated", color="Red")
     plt.legend()
-    plt.title("F scores across many different Beta values graphed as log(Beta)")
+    title = "F scores vs log(Beta) with Proper Nouns on (De-En)"
+    plt.title(title)
     plt.xlabel("log(Beta)")
     plt.ylabel("F Scores")
-    plt.savefig("F_scores.jpg")
+    plt.savefig(get_path_of_image(title))
 
     
 def main(args):
