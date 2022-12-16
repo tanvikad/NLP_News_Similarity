@@ -54,24 +54,26 @@ def expand_pairs(pairs, false_rate):
     #options = 2*len(pairs) - 1
     options = len(pairs) - 1
     return_pairs = []
+    no_repeats_list = []
     for pair in pairs:
-        return_pairs += [(pair[0], pair[1], True)]
+        return_pairs += [(pair[0], pair[1], pair[2], pair[3],  bool(pair[4] < 2.5))]
+        no_repeats_list += [(pair[2], pair[3])]
     while len(return_pairs) < total_num:
         first = random.randint(0, options)
         second = random.randint(0, options)
         if first == second:
             continue
+
     
         # first_elem = pairs[first // 2][first % 2]
         # second_elem = pairs[second // 2][second % 2]
 
-        first_elem = pairs[first][0]
-        second_elem = pairs[second][1]
-        if (first_elem, second_elem) in pairs or (second_elem, first_elem) in pairs:
+        first_elem = pairs[first][2]
+        second_elem = pairs[second][3]
+        if (first_elem, second_elem) in no_repeats_list or (second_elem, first_elem) in no_repeats_list:
             continue
-        if (first_elem, second_elem, False) in return_pairs or (second_elem, first_elem, False) in return_pairs:
-            continue
-        return_pairs += [(first_elem, second_elem, False)]
+
+        return_pairs += [(pairs[first][0], pairs[second][1], first_elem, second_elem,  False)]
     
     random.shuffle(return_pairs)
     return return_pairs
@@ -144,8 +146,6 @@ def translate_to_english(text):
             if(not partial_translation): continue
             translated_text += partial_translation
             index += 1000
-            print(index)
-        
         return translated_text
 
     except:
@@ -429,10 +429,67 @@ def get_data_for_four_points(test_pairs,  translate=False, pos_list=["PROPN"]):
     print(res)
 
 
-        
 
-               
+
+def get_general_f1_score(test_pairs,  translate=True, pos_list=["NOUN", "PROPN"], auto_generated_false = False):
     
+    num_correct = 0
+    true_positive = 0
+    true_negative = 0
+    false_positive = 0
+    false_negative = 0
+
+    for pair in test_pairs:
+        la1, la2, input1, input2, groundtruth = pair
+        text1 = get_text(input1)
+        text2 = get_text(input2)
+        if(text1 == None or text2 == None): continue
+        if translate:
+            if(la1 != "en"): text1 = translate_to_english(text1)
+            if(la2 != "en"): text2 = translate_to_english(text2)
+        count, frequency, classfication = classify(text1, text2, pos_list=pos_list)
+        converted_frequency = convert_frequency_into_four_point(frequency, binary_classifier=0.395)
+
+        binary_classifier = 0.395
+        if(auto_generated_false): binary_classifier = 0.255
+        trial_truth = frequency > binary_classifier
+        if(not auto_generated_false): 
+            groundtruth = groundtruth <= 2.5
+        if(trial_truth == groundtruth):
+            num_correct += 1   
+            if groundtruth:
+                true_positive += 1
+            else:
+                true_negative += 1
+        else:
+            if groundtruth:
+                false_negative+= 1
+            else:
+                false_positive += 1
+    
+    num_correct = num_correct/len(test_pairs)
+    #correlationnumerator = ((true_positive * true_negative) - (false_positive*false_negative))
+    #correlationdenominator = math.sqrt((true_positive+false_positive)*(true_positive+false_negative)*(true_negative+false_positive)*(true_negative+false_negative))
+    #correlation = correlationnumerator/correlationdenominator
+        #Since we had a problem where everything was predicted false, use if statement for precision
+    if true_positive == 0 and false_positive == 0:
+        print("predicted all false")
+        precision = 0
+    else:
+        precision = true_positive/(true_positive + false_positive)
+    # set recall
+    if true_positive + false_negative == 0:
+        recall = 0
+    else:
+        recall = true_positive/(true_positive + false_negative)
+    #set f1 to zero if recall and precision are both 0
+    if precision== 0 and recall == 0:
+        f1 = 0
+    else:
+        f1 = (2*precision*recall)/(precision + recall)
+
+    
+    print(f1)
 
 
 
@@ -583,17 +640,20 @@ def main(args):
     pairs_of_keys = return_pairs_of_keys(args.file)
     random.shuffle(pairs_of_keys)
     #get_good_bad_example(pairs_of_keys[0:10])
+    converted_pairs_of_keys = expand_pairs(pairs_of_keys, 0.8)
 
 
     #random.shuffle(pairs_of_keys)
     #get_data_for_four_points(pairs_of_keys[:int(len(pairs_of_keys)*0.7)], pos_list=["PROPN"])
     
-    test_conversion()
+    #test_conversion()
 
-    get_data_for_four_points(pairs_of_keys[:int(len(pairs_of_keys)*0.2)], pos_list=["PROPN", "NOUN"], translate=True)
+    #get_data_for_four_points(pairs_of_keys[:int(len(pairs_of_keys)*0.2)], pos_list=["PROPN", "NOUN"], translate=True)
 
+    get_general_f1_score(converted_pairs_of_keys[:int(len(pairs_of_keys)*0.2)],  translate=True, pos_list=["NOUN", "PROPN"] , auto_generated_false = True)
+    get_general_f1_score(pairs_of_keys[:int(len(pairs_of_keys)*0.2)],  translate=True, pos_list=["NOUN", "PROPN"] , auto_generated_false = False)
     
-
+    
     #get_best_classifier(pairs_of_keys)
     #finding_difference_in_language(pairs_of_keys,translate=True)
     
