@@ -35,12 +35,12 @@ def return_pairs_of_keys(file):
         lines = f.readlines()
         for line in lines:
             values = str(line).split(",")
-            if(float(values[-3]) > 2): continue
+            #if(float(values[-3]) > 2): continue #currently this just skips all the false pairs in the csv
             keys = str(line).split(",")[2]
             keys = keys.split("_")
             if keys[0] == "pair":
                 continue
-            pairs +=[(int(keys[0]), int(keys[1], ))]
+            pairs +=[(int(keys[0]), int(keys[1]), float(values[-3]))]
     return pairs
              
 def expand_pairs(pairs, false_rate):
@@ -103,12 +103,12 @@ def get_pos(text, pos_list):
             arr += [str(token)]
     return arr
 
-def classify(text1, text2, threshold = 0.31):
+def classify(text1, text2, threshold = 0.31, pos_list=["PROPN"]):
     """Takes in two texts and a threshold for matching nouns/propn.
     Returns the frequency of matching nouns between the two texts,
     as well as true if the frequency is above the threshold"""
-    pos_1 = set(get_pos(text1, ["PROPN"]))
-    pos_2 = set(get_pos(text2, ["PROPN"]))
+    pos_1 = set(get_pos(text1, pos_list))
+    pos_2 = set(get_pos(text2, pos_list))
     #pos_1 = set(get_pos(text1, ["NOUN", "PROPN"]))
     #pos_2 = set(get_pos(text2, ["NOUN", "PROPN"]))
     #pos_1 = set(get_pos(text1, None))
@@ -129,6 +129,7 @@ def translate_to_english(text):
     while(index < len(text)):
         if(index + 1000 > len(text)):
             partial_translation = GoogleTranslator(source='auto', target='en').translate(text[index:])
+            if(not partial_translation): break
             translated_text += partial_translation
             break
         partial_translation = GoogleTranslator(source='auto', target='en').translate(text[index:index+1000])
@@ -138,6 +139,7 @@ def translate_to_english(text):
     
     return translated_text
 def experiment(pairs_of_keys, translate = False):
+    """We are currently not using this function."""
     i = 0
     train_split = 0.8
     train_test_index = int(100 * train_split) #int(len(pairs_of_keys)*train_split)
@@ -219,8 +221,7 @@ def experiment(pairs_of_keys, translate = False):
     print("f1: ", f1)
 
     
-
-def get_data(test_pairs, x, granularity=50, num_total=100, translate=True, use_correlation=False):
+def get_data(test_pairs, x, granularity=50, num_total=100, translate=False, use_correlation=False, random_data=False, pos_list=["PROPN"]):
     
     num_correct = []
     true_positive = []
@@ -235,18 +236,21 @@ def get_data(test_pairs, x, granularity=50, num_total=100, translate=True, use_c
         false_positive += [0]
         false_negative += [0]
 
+    
 
     for pair in test_pairs:
         input1, input2, groundtruth = pair
+        groundtruth = groundtruth < 2.5
         text1 = get_text(input1)
         text2 = get_text(input2)
         if(text1 == None or text2 == None): continue
         if translate:
             text1 = translate_to_english(text1)
             text2 = translate_to_english(text2)
-        count, frequency, classfication = classify(text1, text2)
+        count, frequency, classfication = classify(text1, text2, pos_list=pos_list)
         for i in range(granularity):
             trial_truth = frequency > x[i]
+            if(random_data): (random.uniform(0,1) > x[i])
             if(trial_truth == groundtruth):
                 num_correct[i] += 1   
                 if groundtruth:
@@ -258,6 +262,7 @@ def get_data(test_pairs, x, granularity=50, num_total=100, translate=True, use_c
                     false_negative[i] += 1
                 else:
                     false_positive[i] += 1
+
                
     print(true_negative)
     print(true_positive)
@@ -285,7 +290,10 @@ def get_data(test_pairs, x, granularity=50, num_total=100, translate=True, use_c
         else:
             precisionarray[i] = true_positive[i]/(true_positive[i] + false_positive[i])
         # set recall
-        recallarray[i] = true_positive[i]/(true_positive[i] + false_negative[i])
+        if true_positive[i] + false_negative[i] == 0:
+            recallarray[i] = 0
+        else:
+            recallarray[i] = true_positive[i]/(true_positive[i] + false_negative[i])
         #set f1 to zero if recall and precision are both 0
         if precisionarray[i] == 0 and recallarray[i] == 0:
             f1array[i] = 0
@@ -299,6 +307,7 @@ def get_data(test_pairs, x, granularity=50, num_total=100, translate=True, use_c
     bestf1precision = precisionarray[bestf1index]
     bestf1recall = recallarray[bestf1index]
 
+    print("The best f1 is ", bestf1value)
     print("The best precision is ", bestf1precision, "\n")
     print("The best recall is ", bestf1recall, "\n")
     if use_correlation:
@@ -317,10 +326,12 @@ def get_path_of_image(title):
     path_name += ".jpg"
     return path_name
 
-def get_best_classifier(pairs_of_keys, num_total = 100, granularity = 50, min = 0.0, max = 0.5, plot_f1 = True):
+
+
+def using_different_classifier(pairs_of_keys, num_total = 100, granularity = 20, min = 0.0, max = 1.0):
     random.shuffle(pairs_of_keys)
     test_pairs = pairs_of_keys[:num_total]
-    test_pairs = expand_pairs(test_pairs, 0.5)
+    #test_pairs = expand_pairs(test_pairs, 0.5) #we don't use expand_pairs anymore
     num_total = len(test_pairs)
 
     x = []
@@ -329,13 +340,48 @@ def get_best_classifier(pairs_of_keys, num_total = 100, granularity = 50, min = 
         x += [min+(i*step_size)]
 
     print(x)
-    translated_data, bestf1precisiontranslated, bestf1recalltranslated = get_data(test_pairs,x, granularity=granularity, num_total=num_total, translate=True)
-    not_translated_data, bestf1precisionnottranslated, bestf1recallnottranslated = get_data(test_pairs,x, granularity=granularity, num_total=num_total, translate=False)
+    propn_data, a1, a2 = get_data(test_pairs,x, granularity=granularity, num_total=num_total, translate=False, random_data=False, pos_list=["PROPN"])
+    all_nouns_data, a1, a2 = get_data(test_pairs,x, granularity=granularity, num_total=num_total, translate=False, random_data=False, pos_list=["PROPN", "NOUN"])
+    propn_num_data, a1, a2 = get_data(test_pairs,x, granularity=granularity, num_total=num_total, translate=False, random_data=False, pos_list=["PROPN", "NUM"])
+    all_data, a1, a2 = get_data(test_pairs,x, granularity=granularity, num_total=num_total, translate=False, random_data=False, pos_list=None)
+
     
+    #pos_2 = set(get_pos(text2, ["NOUN", "PROPN"]))
+
+    plt.plot(x,propn_data, marker=".", label="only Proper Nouns", color="Blue")
+    plt.plot(x,all_nouns_data, marker=".", label="all Nouns", color="Red")
+    plt.plot(x,propn_num_data, marker=".", label="Proper Nouns and Numbers", color="Orange")
+    plt.plot(x,all_data, marker=".", label="all words", color="Green")
+    plt.legend()
+    title = "Exploring use of different POS"
+    plt.title(title)
+    plt.xlabel("Binary Classification")
+    plt.ylabel("F1")
+    plt.savefig(get_path_of_image(title))
+    
+
+
+def get_best_classifier(pairs_of_keys, num_total = 100, granularity = 20, min = 0.0, max = 1.0, plot_f1 = True):
+    random.shuffle(pairs_of_keys)
+    test_pairs = pairs_of_keys[:num_total]
+    #test_pairs = expand_pairs(test_pairs, 0.5) #we don't use expand_pairs anymore
+    num_total = len(test_pairs)
+
+    x = []
+    step_size = (max-min)/granularity
+    for i in range(granularity):
+        x += [min+(i*step_size)]
+
+    print(x)
+    translated_data, bestf1precisiontranslated, bestf1recalltranslated = get_data(test_pairs,x, granularity=granularity, num_total=num_total, translate=True, random_data=False)
+    not_translated_data, bestf1precisionnottranslated, bestf1recallnottranslated = get_data(test_pairs,x, granularity=granularity, num_total=num_total, translate=False, random_data=False)
+
+
+
     plt.plot(x,translated_data, marker=".", label="Translated Data", color="Blue")
     plt.plot(x,not_translated_data, marker=".", label="Not Translated Data", color="Red")
     plt.legend()
-    title = "Binary Classifier vs. F1 with Proper Nouns on (De-En)"
+    title = "Binary Classifier vs. F1 with Proper Nouns"
     plt.title(title)
     plt.xlabel("Binary Classification")
     plt.ylabel("F1")
@@ -374,7 +420,7 @@ def plot_f_scores(precision, recall, precision_nottranslated, recall_nottranslat
     plt.plot(logBeta,fs, marker=".", label="Translated", color="Blue")
     plt.plot(logBeta,fns, marker=".", label="Not Translated", color="Red")
     plt.legend()
-    title = "F scores vs log(Beta) with Proper Nouns on (De-En)"
+    title = "F scores vs log(Beta) with Proper Nouns"
     plt.title(title)
     plt.xlabel("log(Beta)")
     plt.ylabel("F Scores")
@@ -383,7 +429,8 @@ def plot_f_scores(precision, recall, precision_nottranslated, recall_nottranslat
     
 def main(args):
     pairs_of_keys = return_pairs_of_keys(args.file)
-    get_best_classifier(pairs_of_keys)
+    #get_best_classifier(pairs_of_keys)
+    using_different_classifier(pairs_of_keys)
 
 
 if __name__ == "__main__": 
