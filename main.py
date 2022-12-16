@@ -14,6 +14,7 @@ import en_core_web_sm
 nlp = en_core_web_sm.load()
 
 import matplotlib.pyplot as plt
+from scipy import stats
 
 #https://www.overleaf.com/7569536854wszndjmnxgsf
 def test():
@@ -25,6 +26,9 @@ def test():
 
     translated = GoogleTranslator(source='auto', target='en').translate("Ameryka\u0144skie obligacje \u015bmieciowe (high yield) podro\u017ca\u0142y o 14%. Je\u015bli kto\u015b postawi\u0142 na Treasuries za po\u015brednictwem Vanguard Total Bond Market ETF, to po 2019 roku zainkasowa\u0142 8,7% zysku. Ca\u0142kiem nie\u017ale jak na \u201enudne\u201d i bezpieczne obligacje Wuja Sama.\n\nKompletny odlot zaliczy\u0142y suwerenne obligacje europejskie, gdzie szale\u0144stwo ujemnych st\u00f3p procentowych popycha\u0142o inwestor\u00f3w do spekulacji rodem z manii tulipanowej. ")  # output -> Weiter so, du bist großartig
     print(translated)
+
+    res = stats.pearsonr([1, 2, 3, 4, 5], [10, 9, 2.5, 6, 4])
+    print(res)
 
 
 #"abcd_efgh = [abcd,efgh] - list of tuples"
@@ -75,7 +79,7 @@ def expand_pairs(pairs, false_rate):
 
 
 #abcd --> json.text in folder [cd]
-def get_text(key, multilingual=True):
+def get_text(key, multilingual=False):
     """Takes in the ID of the text. Returns the text"""
     last_two = str(key % 100) #get last two digits
     if(len(last_two) < 2):
@@ -89,7 +93,10 @@ def get_text(key, multilingual=True):
         return data['text']
     except:
         return None
-    
+
+
+
+
 
 def get_pos(text, pos_list):
     """Takes in text and list of desired parts of speech.
@@ -125,19 +132,25 @@ def classify(text1, text2, threshold = 0.31, pos_list=["PROPN"]):
 def translate_to_english(text):
     index = 0
     translated_text = ""
-
-    while(index < len(text)):
-        if(index + 1000 > len(text)):
-            partial_translation = GoogleTranslator(source='auto', target='en').translate(text[index:])
-            if(not partial_translation): break
+    try:
+        while(index < len(text)):
+            if(index + 1000 > len(text)):
+                partial_translation = GoogleTranslator(source='auto', target='en').translate(text[index:])
+                if(not partial_translation): break
+                translated_text += partial_translation
+                break
+            partial_translation = GoogleTranslator(source='auto', target='en').translate(text[index:index+1000])
+            if(not partial_translation): continue
             translated_text += partial_translation
-            break
-        partial_translation = GoogleTranslator(source='auto', target='en').translate(text[index:index+1000])
-        if(not partial_translation): continue
-        translated_text += partial_translation
-        index += 1000
-    
-    return translated_text
+            index += 1000
+            print(index)
+        
+        return translated_text
+
+    except:
+        return text
+
+
 def experiment(pairs_of_keys, translate = False):
     """We are currently not using this function."""
     i = 0
@@ -324,6 +337,85 @@ def get_path_of_image(title):
     path_name += ".jpg"
     return path_name
 
+def convert_frequency_into_four_point(frequency, binary_classifier):
+    if(frequency < binary_classifier):
+        if(binary_classifier == 0): return 1
+        return (1.5/binary_classifier)*(frequency-binary_classifier) + 2.5
+    else:
+        if(binary_classifier == 1): return 4
+        return (1.5/(1-binary_classifier))*(frequency-binary_classifier) + 2.5
+        
+
+def get_good_bad_example(pairs_of_keys, pos_list=["PROPN", "NOUN"]):
+    worst_gap = 0
+    worst_ids = (-1,-1)
+    worst_tokens = ([],[])
+    best_gap = 4
+    best_ids = (-1,-1)
+    best_tokens = ([],[])
+
+
+    for pair in pairs_of_keys:
+        la1, la2, input1, input2, groundtruth = pair
+        text1 = get_text(input1)
+        text2 = get_text(input2)
+        if(text1 == None or text2 == None): continue
+        if(la1 != "en"): text1 = translate_to_english(text1)
+        if(la2 != "en"): text2 = translate_to_english(text2)
+        count, frequency, classfication = classify(text1, text2, pos_list=pos_list)
+        #converted_frequency = convert_frequency_into_four_point(frequency, binary_classifier=0.39)
+        converted_frequency = 3*(1-frequency) + 1
+        if(abs(converted_frequency - groundtruth) > worst_gap):
+            worst_ids = (input1,input2)
+            worst_tokens = (set(get_pos(text1, pos_list)), set(get_pos(text2, pos_list)))
+            worst_gap = abs(converted_frequency - groundtruth) 
+        if(abs(converted_frequency - groundtruth) < best_gap):
+            best_ids = (input1,input2)
+            best_tokens = (set(get_pos(text1, pos_list)), set(get_pos(text2, pos_list)))
+            best_gap = abs(converted_frequency - groundtruth) 
+    
+    print("The worst gap is ", worst_gap)
+    print("The worst ids were ", worst_ids)
+    print("The worst tokens were ", worst_tokens)
+    print("\n\n\n\n")
+
+    print("The best gap is ", best_gap)
+    print("The best ids were ", best_ids)
+    print("The best tokens were ", best_tokens)
+    print("\n\n\n\n")
+        
+
+
+def get_data_for_four_points(test_pairs,  translate=False, pos_list=["PROPN"]):
+    
+    frequency_vector = []
+    ground_truth_vector = []
+
+    for pair in test_pairs:
+        la1, la2, input1, input2, groundtruth = pair
+        text1 = get_text(input1)
+        text2 = get_text(input2)
+        if(text1 == None or text2 == None): continue
+        if translate:
+            if(la1 != "en"): text1 = translate_to_english(text1)
+            if(la2 != "en"): text2 = translate_to_english(text2)
+        count, frequency, classfication = classify(text1, text2, pos_list=pos_list)
+
+        ground_truth_vector += [groundtruth]
+        frequency_vector += [frequency]
+    
+
+    #0.7 0.395
+    print(len(ground_truth_vector))
+    res = stats.pearsonr(ground_truth_vector, frequency_vector)
+    print(res)
+
+
+        
+
+               
+    
+
 
 
 def using_different_POS(pairs_of_keys, num_total = 100, granularity = 20, min = 0.0, max = 1.0):
@@ -470,6 +562,16 @@ def finding_difference_in_language(pairs_of_keys, num_total = 100, translate=Fal
 
 def main(args):
     pairs_of_keys = return_pairs_of_keys(args.file)
+    random.shuffle(pairs_of_keys)
+    #get_good_bad_example(pairs_of_keys[0:100])
+
+
+    #random.shuffle(pairs_of_keys)
+    #get_data_for_four_points(pairs_of_keys[:int(len(pairs_of_keys)*0.7)], pos_list=["PROPN"])
+    #get_data_for_four_points(pairs_of_keys[:int(len(pairs_of_keys)*0.2)], pos_list=["PROPN", "NOUN"], translate=True)
+
+    
+
     #get_best_classifier(pairs_of_keys)
     finding_difference_in_language(pairs_of_keys,translate=True)
 
