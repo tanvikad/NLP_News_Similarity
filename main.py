@@ -40,7 +40,7 @@ def return_pairs_of_keys(file):
             keys = keys.split("_")
             if keys[0] == "pair":
                 continue
-            pairs +=[(int(keys[0]), int(keys[1]), float(values[-3]))]
+            pairs +=[(values[0], values[1], int(keys[0]), int(keys[1]), float(values[-3]))]
     return pairs
              
 def expand_pairs(pairs, false_rate):
@@ -236,10 +236,8 @@ def get_data(test_pairs, x, granularity=50, num_total=100, translate=False, use_
         false_positive += [0]
         false_negative += [0]
 
-    
-
     for pair in test_pairs:
-        input1, input2, groundtruth = pair
+        la1, la2, input1, input2, groundtruth = pair
         groundtruth = groundtruth < 2.5
         text1 = get_text(input1)
         text2 = get_text(input2)
@@ -328,7 +326,7 @@ def get_path_of_image(title):
 
 
 
-def using_different_classifier(pairs_of_keys, num_total = 100, granularity = 20, min = 0.0, max = 1.0):
+def using_different_POS(pairs_of_keys, num_total = 100, granularity = 20, min = 0.0, max = 1.0):
     random.shuffle(pairs_of_keys)
     test_pairs = pairs_of_keys[:num_total]
     #test_pairs = expand_pairs(test_pairs, 0.5) #we don't use expand_pairs anymore
@@ -426,11 +424,54 @@ def plot_f_scores(precision, recall, precision_nottranslated, recall_nottranslat
     plt.ylabel("F Scores")
     plt.savefig(get_path_of_image(title))
 
+
+#should only be with monolingual pairs 
+def finding_difference_in_language(pairs_of_keys, num_total = 100, translate=False, granularity = 20, min = 0.0, max = 1.0, plot_f1 = True):
+    random.shuffle(pairs_of_keys)
+    train_split = 0.7
+    train_pairs = pairs_of_keys[:int(0.7*len(pairs_of_keys))]
     
+    dict = {}
+    for i in range(len(train_pairs)):
+        if(train_pairs[i][0] not in dict):
+            dict[train_pairs[i][0]] = [train_pairs[i]]
+        else:
+            dict[train_pairs[i][0]] += [train_pairs[i]]
+    
+
+    for key in dict.keys():
+        print(key)
+        print(len(dict[key]))
+
+    x = []
+    step_size = (max-min)/granularity
+    for i in range(granularity):
+        x += [min+(i*step_size)]
+
+    print(x)
+
+    i =0
+    colors = ["Blue", "Red", "Orange", "Green", "Purple", "Yellow", "lime", "slategray"]
+    language_code_dict = {"en":"English", "de":"German", "tr":"Turkish", "pl":"Polish", "es":"Spanish", "ar":"Arabic", "fr":"French"}
+    for key in dict.keys():
+        print(language_code_dict[key])
+        data, data_precision, data_recall = get_data(dict[key],x, granularity=granularity, num_total=len(dict[key]), translate=translate, random_data=False)
+        plt.plot(x,data, marker=".", label=language_code_dict[key], color=colors[i])
+        print(i)
+        i += 1
+    
+    plt.legend()
+    title = "Translated: Exploring Classification on different monolingual pairs"
+    plt.title(title)
+    plt.xlabel("Binary Classification")
+    plt.ylabel("F1")
+    plt.savefig(get_path_of_image(title))
+    
+
 def main(args):
     pairs_of_keys = return_pairs_of_keys(args.file)
     #get_best_classifier(pairs_of_keys)
-    using_different_classifier(pairs_of_keys)
+    finding_difference_in_language(pairs_of_keys,translate=True)
 
 
 if __name__ == "__main__": 
