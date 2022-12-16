@@ -79,7 +79,7 @@ def expand_pairs(pairs, false_rate):
 
 
 #abcd --> json.text in folder [cd]
-def get_text(key, multilingual=False):
+def get_text(key, multilingual=True):
     """Takes in the ID of the text. Returns the text"""
     last_two = str(key % 100) #get last two digits
     if(len(last_two) < 2):
@@ -120,6 +120,7 @@ def classify(text1, text2, threshold = 0.31, pos_list=["PROPN"]):
     #pos_2 = set(get_pos(text2, ["NOUN", "PROPN"]))
     #pos_1 = set(get_pos(text1, None))
     #pos_2 = set(get_pos(text2, None))
+
     count = 0
     for token in pos_1:
         if(token in pos_2):
@@ -256,8 +257,8 @@ def get_data(test_pairs, x, granularity=50, num_total=100, translate=False, use_
         text2 = get_text(input2)
         if(text1 == None or text2 == None): continue
         if translate:
-            text1 = translate_to_english(text1)
-            text2 = translate_to_english(text2)
+            if(la1 != "en"): text1 = translate_to_english(text1)
+            if(la2 != "en"): text2 = translate_to_english(text2)
         count, frequency, classfication = classify(text1, text2, pos_list=pos_list)
         for i in range(granularity):
             trial_truth = frequency > x[i]
@@ -339,20 +340,31 @@ def get_path_of_image(title):
 
 def convert_frequency_into_four_point(frequency, binary_classifier):
     if(frequency < binary_classifier):
-        if(binary_classifier == 0): return 1
-        return (1.5/binary_classifier)*(frequency-binary_classifier) + 2.5
+        if(binary_classifier == 0): return 2.5
+        return (-1.5/binary_classifier)*(frequency) + 4
     else:
-        if(binary_classifier == 1): return 4
-        return (1.5/(1-binary_classifier))*(frequency-binary_classifier) + 2.5
-        
+        if(binary_classifier == 1): return 2.5
+        return (-1.5/(1-binary_classifier))*(frequency-1) + 1
+
+
+
+def test_conversion():
+    step = 0.2
+    x = 0
+    while(x <= 1.0):
+        print("(", x, ", ", convert_frequency_into_four_point(x, 0.39), "), ")
+        x += step
 
 def get_good_bad_example(pairs_of_keys, pos_list=["PROPN", "NOUN"]):
     worst_gap = 0
     worst_ids = (-1,-1)
     worst_tokens = ([],[])
+    our_guess = 0
+    their_guess = 0
     best_gap = 4
     best_ids = (-1,-1)
     best_tokens = ([],[])
+    threshold = 2
 
 
     for pair in pairs_of_keys:
@@ -365,10 +377,13 @@ def get_good_bad_example(pairs_of_keys, pos_list=["PROPN", "NOUN"]):
         count, frequency, classfication = classify(text1, text2, pos_list=pos_list)
         #converted_frequency = convert_frequency_into_four_point(frequency, binary_classifier=0.39)
         converted_frequency = 3*(1-frequency) + 1
-        if(abs(converted_frequency - groundtruth) > worst_gap):
+        if(abs(converted_frequency - groundtruth) > worst_gap and abs(converted_frequency - groundtruth) <threshold):
+            if(converted_frequency > groundtruth): continue
             worst_ids = (input1,input2)
             worst_tokens = (set(get_pos(text1, pos_list)), set(get_pos(text2, pos_list)))
             worst_gap = abs(converted_frequency - groundtruth) 
+            our_guess = converted_frequency
+            their_guess = groundtruth
         if(abs(converted_frequency - groundtruth) < best_gap):
             best_ids = (input1,input2)
             best_tokens = (set(get_pos(text1, pos_list)), set(get_pos(text2, pos_list)))
@@ -377,6 +392,8 @@ def get_good_bad_example(pairs_of_keys, pos_list=["PROPN", "NOUN"]):
     print("The worst gap is ", worst_gap)
     print("The worst ids were ", worst_ids)
     print("The worst tokens were ", worst_tokens)
+    print("our guess is ", our_guess)
+    print("their guss is ", their_guess)
     print("\n\n\n\n")
 
     print("The best gap is ", best_gap)
@@ -400,9 +417,10 @@ def get_data_for_four_points(test_pairs,  translate=False, pos_list=["PROPN"]):
             if(la1 != "en"): text1 = translate_to_english(text1)
             if(la2 != "en"): text2 = translate_to_english(text2)
         count, frequency, classfication = classify(text1, text2, pos_list=pos_list)
+        converted_frequency = convert_frequency_into_four_point(frequency, binary_classifier=0.39)
 
         ground_truth_vector += [groundtruth]
-        frequency_vector += [frequency]
+        frequency_vector += [converted_frequency]
     
 
     #0.7 0.395
@@ -534,6 +552,7 @@ def finding_difference_in_language(pairs_of_keys, num_total = 100, translate=Fal
     for key in dict.keys():
         print(key)
         print(len(dict[key]))
+        if(len(dict[key]) > 100): dict[key] = dict[key][:100]
 
     x = []
     step_size = (max-min)/granularity
@@ -563,17 +582,24 @@ def finding_difference_in_language(pairs_of_keys, num_total = 100, translate=Fal
 def main(args):
     pairs_of_keys = return_pairs_of_keys(args.file)
     random.shuffle(pairs_of_keys)
-    #get_good_bad_example(pairs_of_keys[0:100])
+    #get_good_bad_example(pairs_of_keys[0:10])
 
 
     #random.shuffle(pairs_of_keys)
     #get_data_for_four_points(pairs_of_keys[:int(len(pairs_of_keys)*0.7)], pos_list=["PROPN"])
-    #get_data_for_four_points(pairs_of_keys[:int(len(pairs_of_keys)*0.2)], pos_list=["PROPN", "NOUN"], translate=True)
+    
+    test_conversion()
+
+    get_data_for_four_points(pairs_of_keys[:int(len(pairs_of_keys)*0.2)], pos_list=["PROPN", "NOUN"], translate=True)
 
     
 
     #get_best_classifier(pairs_of_keys)
-    finding_difference_in_language(pairs_of_keys,translate=True)
+    #finding_difference_in_language(pairs_of_keys,translate=True)
+    
+    # text1 = get_text(1484012603)
+    # text2 = get_text(1484146501)
+    # print(classify(text1, text2))
 
 
 if __name__ == "__main__": 
